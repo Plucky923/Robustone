@@ -215,7 +215,9 @@ impl DisasmConfig {
         let mut output = OutputConfig::from_display_options(&self.display_options);
 
         if self.arch_spec.has_option("noalias") {
-            output.alias_regs = false;
+            // Capstone's CS_OPT_SYNTAX_NO_ALIAS_TEXT only disables mnemonic
+            // aliasing (csrr → csrrs, j → jal, etc.). Register naming (ABI vs
+            // physical) is governed independently and stays as ABI names.
             output.compat_aliases = false;
             output.compressed_aliases = false;
         } else if self.arch_spec.has_option("noaliascompressed") {
@@ -300,7 +302,7 @@ mod tests {
         };
         let output = noalias.output_config();
 
-        assert!(!output.alias_regs);
+        // noalias only suppresses mnemonic aliases; register names stay ABI.
         assert!(!output.compat_aliases);
         assert!(!output.compressed_aliases);
     }

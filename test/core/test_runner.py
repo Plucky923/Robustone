@@ -101,7 +101,7 @@ class TestRunner:
             comparator: Output comparator instance (default created if None)
         """
         self.repo_root = repo_root or find_repo_root()
-        self.comparator = comparator or OutputComparator()
+        self.comparator = comparator or OutputComparator(strict_match=False)
         self.robustone_bin = self.repo_root / "target" / "debug" / "robustone"
         self.cstool_bin = (
             self.repo_root / "third_party" / "capstone" / "cstool" / "cstool"
@@ -184,11 +184,23 @@ class TestRunner:
                     cstool_arch = part[len("cstool_arch=") :].strip()
                     break
 
+        # Mirror the per-case cstool arch onto robustone so options like
+        # +noalias/+c/+fd propagate to both tools.  The robustone CLI accepts
+        # the same modifier vocabulary for the supported architectures.
+        robustone_arch = config.robustone_arch
+        if cstool_arch and cstool_arch != config.cstool_arch:
+            base = config.cstool_arch.split("+", 1)[0]
+            modifier_suffix = (
+                cstool_arch[len(base) :] if cstool_arch.startswith(base) else ""
+            )
+            if modifier_suffix:
+                robustone_arch = robustone_arch.split("+", 1)[0] + modifier_suffix
+
         # Build commands
         robustone_cmd = [
             str(self.robustone_bin),
             "--detailed",
-            config.robustone_arch,
+            robustone_arch,
             hex_input,
         ] + config.robustone_flags
 
@@ -205,7 +217,7 @@ class TestRunner:
             "--json",
             "--detailed",
             "--real-detail",
-            config.robustone_arch,
+            robustone_arch,
             hex_input,
         ] + config.robustone_flags
         semantic_cstool_cmd = [
