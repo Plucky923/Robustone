@@ -110,7 +110,9 @@ fn test_noalias_modifier_disables_riscv_alias_rendering() {
     let engine = DisassemblyEngine::new(config.arch_name());
     let output = engine.format_result(&result, config.output_config());
 
-    assert!(output.contains("addi\tx1, x0, 1"));
+    // noalias disables mnemonic aliases (addi instead of li) but keeps ABI
+    // register names, matching Capstone's CS_OPT_SYNTAX_NO_ALIAS_TEXT.
+    assert!(output.contains("addi\tra, zero, 1"));
     assert!(!output.contains("li\tra"));
 }
 
@@ -379,15 +381,19 @@ fn test_riscv_profile_extension_semantics_at_decode_time() {
     assert_eq!(decoded.mnemonic, "c.addi");
     assert_eq!(decoded.size, 2);
 
-    // ...and fail without +c when explicit modifiers are used.
+    // ...and still decode without +c because Capstone auto-enables C for
+    // compressed encodings even when explicit modifiers are used.
     let args = vec!["robustone", "riscv32+a", "0105"];
     let cli = Cli::try_parse_from(args).expect("CLI arguments should parse");
     let config = DisasmConfig::config_from_cli(&cli).expect("configuration should be valid");
-    let result = process_input(&config);
-    assert!(
-        result.is_err(),
-        "compressed instruction should fail without C extension when explicit modifiers are used"
-    );
+    let result = process_input(&config)
+        .expect("compressed instruction should decode with auto-enabled C extension");
+    let decoded = result.instructions[0]
+        .decoded
+        .as_ref()
+        .expect("decoded IR should be present");
+    assert_eq!(decoded.mnemonic, "c.addi");
+    assert_eq!(decoded.size, 2);
 }
 
 /// End-to-end CLI test verifying that profile modifiers strictly change decode

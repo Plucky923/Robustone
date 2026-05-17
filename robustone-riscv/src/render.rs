@@ -33,9 +33,9 @@ pub fn render_riscv_text_parts(
             .unwrap_or_else(|| instruction.mnemonic.clone())
     };
 
-    // Capstone hides the redundant source register for in-place compressed
-    // ALU instructions only in no-alias mode.  When aliasing to the
-    // uncompressed mnemonic (e.g. c.sub → sub) the operand is expanded.
+    // The redundant source register for in-place compressed ALU instructions
+    // is hidden only in no-alias mode.  When aliasing to the uncompressed
+    // mnemonic (e.g. c.sub → sub) the operand is expanded.
     let mut hidden = instruction.render_hints.compat_hidden_operands.clone();
     let has_compat_alias = instruction.render_hints.compat_mnemonic.is_some();
     if !has_compat_alias {
@@ -56,11 +56,12 @@ pub fn render_riscv_text_parts(
         }
     }
 
-    let hidden_operands: &[usize] = if matches!(profile, TextRenderProfile::Canonical) {
-        &[][..]
-    } else {
-        &hidden
-    };
+    let hidden_operands: &[usize] =
+        if matches!(profile, TextRenderProfile::Canonical) || !use_compat_aliases {
+            &[][..]
+        } else {
+            &hidden
+        };
 
     // Inject implicit sp operand for stack-based compressed instructions
     // so the renderer produces "c.lwsp rd, imm(sp)" and "c.addi4spn rd, sp, imm".
@@ -285,7 +286,7 @@ fn format_riscv_operand(
             if let Some(name) = crate::shared::lookup_csr_for_xlen(addr, xlen64) {
                 name.to_string()
             } else {
-                // Capstone renders unknown / out-of-XLEN CSRs in hex.
+                // Unknown / out-of-XLEN CSRs are rendered in hex.
                 format!("0x{addr:x}")
             }
         }
@@ -552,7 +553,7 @@ pub struct RiscVRenderer;
 impl Renderer for RiscVRenderer {
     fn render(&self, instruction: &DecodedInstruction, options: RenderOptions) -> (String, String) {
         // Register naming (ABI vs physical) is independent of mnemonic aliasing.
-        // Capstone keeps ABI register names even under CS_OPT_SYNTAX_NO_ALIAS_TEXT;
+        // Register naming (ABI vs physical) is independent of mnemonic aliasing;
         // only the Canonical profile (used by JSON IR) falls back to physical names.
         let alias_regs =
             options.alias_regs || !matches!(options.text_profile, TextRenderProfile::Canonical);

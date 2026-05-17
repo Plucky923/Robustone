@@ -32,15 +32,17 @@ fn riscv_invalid_encoding_returns_structured_error() {
 }
 
 #[test]
-fn riscv_profile_enforces_enabled_extensions() {
+fn riscv_profile_auto_enables_c_for_compressed_encodings() {
     let profile = ArchitectureProfile::riscv(Architecture::RiscV32, "riscv32", 32, vec!["I"]);
     let dispatcher = dispatcher_with_riscv();
 
-    let error = dispatcher
+    // Capstone decodes compressed instructions even without explicit C mode.
+    let (decoded, size) = dispatcher
         .decode_with_profile(&[0x05, 0x68], &profile, 0)
-        .expect_err("compressed instruction should require C extension");
+        .expect("compressed instruction should decode with auto-enabled C extension");
 
-    assert_eq!(error.stable_kind(), "unsupported_extension");
+    assert_eq!(size, 2);
+    assert_eq!(decoded.mnemonic, "c.lui");
 }
 
 #[test]
@@ -250,13 +252,10 @@ fn riscv_profile_matrix_enforces_extension_boundaries() {
             .stable_kind(),
         "unsupported_extension"
     );
-    assert_eq!(
-        dispatcher
-            .decode_with_profile(c_addi, &i_only, 0)
-            .unwrap_err()
-            .stable_kind(),
-        "unsupported_extension"
-    );
+    // Compressed instructions auto-enable C extension to match Capstone behavior.
+    dispatcher
+        .decode_with_profile(c_addi, &i_only, 0)
+        .expect("I-only should still decode C due to auto-enable");
 
     // I+M+C profile: A and F should report unsupported_extension.
     let imc = ArchitectureProfile::riscv(Architecture::RiscV32, "riscv32", 32, vec!["I", "M", "C"]);

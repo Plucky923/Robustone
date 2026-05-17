@@ -319,7 +319,7 @@ proptest! {
 }
 
 #[test]
-fn test_profile_without_c_extension_rejects_compressed_decode() {
+fn test_profile_without_c_extension_auto_enables_compressed_decode() {
     let profile = rt::common::ArchitectureProfile::riscv(
         rt::architecture::Architecture::RiscV32,
         "riscv32",
@@ -328,9 +328,12 @@ fn test_profile_without_c_extension_rejects_compressed_decode() {
     );
     let dispatcher = dispatcher_with_profile(&profile);
 
-    let error = dispatcher
+    // Capstone decodes compressed instructions even without explicit C mode,
+    // so robustone auto-enables C for compressed encodings.
+    let (decoded, size) = dispatcher
         .decode_with_profile(&[0x05, 0x68], &profile, 0)
-        .expect_err("compressed instruction should require the C extension");
+        .expect("compressed instruction should decode with auto-enabled C extension");
 
-    assert_eq!(error.stable_kind(), "unsupported_extension");
+    assert_eq!(size, 2);
+    assert_eq!(decoded.mnemonic, "c.lui");
 }
