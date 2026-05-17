@@ -3,11 +3,13 @@
 //! This module contains common utilities and shared functionality used across
 //! all RISC-V extensions to eliminate code duplication and maintain consistency.
 
+pub mod csr;
 pub mod encoding;
 pub mod operands;
 pub mod registers;
 
 // Re-export commonly used items for convenience
+pub use csr::lookup_csr_for_xlen;
 pub use encoding::{InstructionDecoder, SignExtender};
 pub use operands::{OperandFactory, OperandFormatter};
 pub use registers::{RegisterManager, RegisterNameProvider};

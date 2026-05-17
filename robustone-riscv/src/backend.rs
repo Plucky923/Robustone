@@ -118,6 +118,16 @@ pub enum RiscVField {
     // Shift amount fields
     Shamtw, // 5-bit shift amount for RV32 (bits[24:20])
     Shamtd, // 6-bit shift amount for RV64 (bits[25:20])
+    // Additional compressed immediates
+    ImmAddi4spn, // c.addi4spn: {bits[12:11], bits[10:7], bit[6], bit[5]} << 2
+    ImmAddi16sp, // c.addi16sp: {bit[12], bits[4:3], bit[5], bit[2], bit[6]} << 4
+    ImmLwsp,     // c.lwsp: {bits[3:2], bit[12], bits[6:4]} << 2
+    ImmSwsp,     // c.swsp: {bits[8:7], bits[12:9]} << 2
+    ImmLdsp,     // c.ldsp/c.fldsp: {bits[4:2], bit[12], bits[6:5]} << 3
+    ImmSdsp,     // c.sdsp/c.fsdsp: {bits[9:7], bits[12:10]} << 3
+    ImmCJ, // c.j: {bit[12], bit[8], bits[10:9], bit[6], bit[7], bit[2], bit[11], bits[5:3]} << 1
+    ImmCB, // c.beqz/c.bnez: {bit[12], bits[6:5], bit[2], bits[11:10], bits[4:3]} << 1
+    ImmCA, // c.srli/c.srai/c.andi: {bit[12], bits[6:2]}
 }
 
 robustone_isa_macros::define_registers! {
@@ -134,6 +144,7 @@ robustone_isa_macros::define_formats! {
         Rd; Rs1; Rs2; Funct3; Funct7;
         Imm12; Imm12S; Imm20U;
         Rs3; Fmt; Rs2C; RdPrime; Rs2Prime; Rs1Prime; Imm6; ImmCL; ImmCLW; Shamtw; Shamtd;
+        ImmAddi4spn; ImmAddi16sp; ImmLwsp; ImmSwsp; ImmLdsp; ImmSdsp; ImmCJ; ImmCB; ImmCA;
     };
     format R_TYPE {
         rd: bits(7, 5) as Rd,
@@ -171,6 +182,7 @@ robustone_isa_macros::define_formats! {
     format CI_TYPE {
         rd: bits(7, 5) as Rd,
         imm6: bits(2, 6) as Imm6,
+        imm_addi16sp: bits(2, 6) as ImmAddi16sp,
     };
     format CR_TYPE {
         rs1: bits(7, 5) as Rs1,
@@ -199,6 +211,31 @@ robustone_isa_macros::define_formats! {
         rs3: bits(27, 5) as Rs3,
         fmt: bits(25, 2) as Fmt,
         funct3: bits(12, 3) as Funct3,
+    };
+    format CIW_TYPE {
+        rd_prime: bits(2, 3) as RdPrime,
+        imm_addi4spn: bits(5, 8) as ImmAddi4spn,
+    };
+    format CI2_TYPE {
+        rd: bits(7, 5) as Rd,
+        imm_lwsp: bits(2, 6) as ImmLwsp,
+        imm_ldsp: bits(2, 6) as ImmLdsp,
+    };
+    format CSS_TYPE {
+        rs2: bits(2, 5) as Rs2C,
+        imm_swsp: bits(7, 6) as ImmSwsp,
+        imm_sdsp: bits(7, 6) as ImmSdsp,
+    };
+    format CB_TYPE {
+        rd_prime: bits(7, 3) as RdPrime,
+        imm_ca: bits(2, 5) as ImmCA,
+    };
+    format CB2_TYPE {
+        rs1_prime: bits(7, 3) as Rs1Prime,
+        imm_cb: bits(2, 8) as ImmCB,
+    };
+    format CJ_TYPE {
+        imm_cj: bits(2, 11) as ImmCJ,
     }
 }
 
@@ -349,6 +386,63 @@ fn riscv_extract_field(
             let bits12_10 = (word >> 10) & 0x7;
             let bit6 = (word >> 6) & 1;
             Ok((bit5 << 6) | (bits12_10 << 3) | (bit6 << 2))
+        }
+        RiscVField::ImmAddi4spn => {
+            let nzimm = ((word >> 11) & 0x3) << 4
+                | ((word >> 7) & 0xF) << 6
+                | ((word >> 6) & 0x1) << 2
+                | ((word >> 5) & 0x1) << 3;
+            Ok(nzimm)
+        }
+        RiscVField::ImmAddi16sp => {
+            let nzimm = ((word >> 12) & 0x1) << 9
+                | ((word >> 3) & 0x3) << 7
+                | ((word >> 5) & 0x1) << 6
+                | ((word >> 2) & 0x1) << 5
+                | ((word >> 6) & 0x1) << 4;
+            Ok(nzimm)
+        }
+        RiscVField::ImmLwsp => {
+            let uimm =
+                ((word >> 2) & 0x3) << 6 | ((word >> 12) & 0x1) << 5 | ((word >> 4) & 0x7) << 2;
+            Ok(uimm)
+        }
+        RiscVField::ImmSwsp => {
+            let uimm = ((word >> 7) & 0x3) << 6 | ((word >> 9) & 0xF) << 2;
+            Ok(uimm)
+        }
+        RiscVField::ImmLdsp => {
+            let uimm =
+                ((word >> 2) & 0x7) << 6 | ((word >> 12) & 0x1) << 5 | ((word >> 5) & 0x3) << 3;
+            Ok(uimm)
+        }
+        RiscVField::ImmSdsp => {
+            let uimm = ((word >> 7) & 0x7) << 6 | ((word >> 10) & 0x7) << 3;
+            Ok(uimm)
+        }
+        RiscVField::ImmCJ => {
+            let imm = ((word >> 12) & 0x1) << 11
+                | ((word >> 11) & 0x1) << 4
+                | ((word >> 10) & 0x1) << 9
+                | ((word >> 9) & 0x1) << 8
+                | ((word >> 8) & 0x1) << 10
+                | ((word >> 7) & 0x1) << 6
+                | ((word >> 6) & 0x1) << 7
+                | ((word >> 3) & 0x7) << 1
+                | ((word >> 2) & 0x1) << 5;
+            Ok(imm)
+        }
+        RiscVField::ImmCB => {
+            let imm = ((word >> 12) & 0x1) << 8
+                | ((word >> 5) & 0x3) << 6
+                | ((word >> 2) & 0x1) << 5
+                | ((word >> 10) & 0x3) << 3
+                | ((word >> 3) & 0x3) << 1;
+            Ok(imm)
+        }
+        RiscVField::ImmCA => {
+            let imm = ((word >> 12) & 0x1) << 5 | ((word >> 2) & 0x1F);
+            Ok(imm)
         }
         _ => {
             for f in format.fields() {

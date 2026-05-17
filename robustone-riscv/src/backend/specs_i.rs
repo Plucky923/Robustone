@@ -60,6 +60,21 @@ robustone_isa_macros::define_instructions! {
         manual = "RISC-V Unprivileged ISA Vol. I";
         effect = Memory;
     }
+    insn SD {
+        mnemonic = "sd";
+        opcode_id = "SD";
+        pattern = robustone_isa::mask_value!(0x0000_707F, 0x0000_3023);
+        format = &S_TYPE;
+        operands = &[
+            robustone_isa::reg!(RiscVRegisterClass::Gpr, RiscVField::Rs2, robustone_isa::Access::Read),
+            robustone_isa::mem_imm!(RiscVRegisterClass::Gpr, RiscVField::Rs1, RiscVField::Imm12S, robustone_isa::ImmediateTransform::SignExtend { bits: 12 }, robustone_isa::Access::Write),
+        ];
+        features = RiscVFeature::I;
+        modes = ModeSet::Only(&[RiscVMode::RV64]);
+        groups = &[robustone_isa::InstructionGroup::Integer, robustone_isa::InstructionGroup::Memory];
+        manual = "RISC-V Unprivileged ISA Vol. I";
+        effect = Memory;
+    }
     insn BEQ {
         mnemonic = "beq";
         opcode_id = "BEQ";
@@ -197,6 +212,21 @@ robustone_isa_macros::define_instructions! {
         mnemonic = "ld";
         opcode_id = "LD";
         pattern = robustone_isa::mask_value!(0x0000_707F, 0x0000_3003);
+        format = &I_TYPE;
+        operands = &[
+            robustone_isa::reg!(RiscVRegisterClass::Gpr, RiscVField::Rd, robustone_isa::Access::Write),
+            robustone_isa::mem_imm!(RiscVRegisterClass::Gpr, RiscVField::Rs1, RiscVField::Imm12, robustone_isa::ImmediateTransform::SignExtend { bits: 12 }, robustone_isa::Access::Read),
+        ];
+        features = RiscVFeature::I;
+        modes = ModeSet::Only(&[RiscVMode::RV64]);
+        groups = &[robustone_isa::InstructionGroup::Integer, robustone_isa::InstructionGroup::Memory];
+        manual = "RISC-V Unprivileged ISA Vol. I";
+        effect = Memory;
+    }
+    insn LWU {
+        mnemonic = "lwu";
+        opcode_id = "LWU";
+        pattern = robustone_isa::mask_value!(0x0000_707F, 0x0000_6003);
         format = &I_TYPE;
         operands = &[
             robustone_isa::reg!(RiscVRegisterClass::Gpr, RiscVField::Rd, robustone_isa::Access::Write),
