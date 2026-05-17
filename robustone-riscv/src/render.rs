@@ -67,29 +67,23 @@ pub fn render_riscv_text_parts(
     // so the renderer produces "c.lwsp rd, imm(sp)" and "c.addi4spn rd, sp, imm".
     let mut effective_operands = instruction.operands.clone();
     match instruction.mnemonic.as_str() {
-        "c.lwsp" | "c.ldsp" | "c.flwsp" | "c.fldsp" => {
-            if effective_operands.len() == 2 {
-                effective_operands.push(Operand::Register {
-                    register: robustone_core::ir::RegisterId::riscv(2),
-                });
-            }
+        "c.lwsp" | "c.ldsp" | "c.flwsp" | "c.fldsp" if effective_operands.len() == 2 => {
+            effective_operands.push(Operand::Register {
+                register: robustone_core::ir::RegisterId::riscv(2),
+            });
         }
-        "c.swsp" | "c.sdsp" | "c.fswsp" | "c.fsdsp" => {
-            if effective_operands.len() == 2 {
-                effective_operands.push(Operand::Register {
-                    register: robustone_core::ir::RegisterId::riscv(2),
-                });
-            }
+        "c.swsp" | "c.sdsp" | "c.fswsp" | "c.fsdsp" if effective_operands.len() == 2 => {
+            effective_operands.push(Operand::Register {
+                register: robustone_core::ir::RegisterId::riscv(2),
+            });
         }
-        "c.addi4spn" => {
-            if effective_operands.len() == 2 {
-                effective_operands.insert(
-                    1,
-                    Operand::Register {
-                        register: robustone_core::ir::RegisterId::riscv(2),
-                    },
-                );
-            }
+        "c.addi4spn" if effective_operands.len() == 2 => {
+            effective_operands.insert(
+                1,
+                Operand::Register {
+                    register: robustone_core::ir::RegisterId::riscv(2),
+                },
+            );
         }
         _ => {}
     }

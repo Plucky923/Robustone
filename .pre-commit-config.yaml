@@ -59,3 +59,32 @@ repos:
         types: [rust]
         pass_filenames: false
         stages: [pre-push]
+
+      - id: verify-boundary
+        name: verify boundary
+        entry: cargo xtask verify-boundary
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+      - id: check-spec
+        name: check spec
+        entry: cargo xtask check-spec --all
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+      - id: audit-no-capstone-generated-specs
+        name: audit no capstone generated specs
+        entry: cargo xtask audit-no-capstone-generated-specs
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+      - id: compat-strict
+        name: compat strict
+        entry: cargo xtask compat --strict
+        language: system
+        types: [rust]
+        pass_filenames: false
+        stages: [pre-push]
