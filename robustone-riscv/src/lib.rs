@@ -205,8 +205,8 @@ impl ArchitectureHandler for RiscVHandler {
             Xlen::X64 => crate::backend::RiscVMode::RV64,
         };
 
-        // Capstone decodes compressed instructions even without explicit C mode,
-        // so we auto-enable C for compressed encodings to maintain compatibility.
+        // Reference decoders accept compressed instructions even without explicit
+        // C mode, so we auto-enable C for compressed encodings to match.
         let mut effective_features = features;
         if bytes.len() >= 2 && (bytes[0] & 0x3) != 0x3 {
             effective_features |= crate::backend::RiscVFeature::C;

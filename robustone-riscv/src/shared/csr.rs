@@ -1,6 +1,6 @@
 //! RISC-V CSR (Control and Status Register) lookup tables.
 //!
-//! Generated from Capstone's RISCVGenSystemOperands.inc.
+//! Generated from reference RISC-V system operand definitions.
 //! Do not edit manually.
 
 /// CSR descriptor: symbolic name and whether the CSR is only valid for RV32.
