@@ -33,15 +33,67 @@ pub fn render_riscv_text_parts(
             .unwrap_or_else(|| instruction.mnemonic.clone())
     };
 
-    let hidden_operands = if matches!(profile, TextRenderProfile::Canonical) || !use_compat_aliases
-    {
+    // Capstone hides the redundant source register for in-place compressed
+    // ALU instructions only in no-alias mode.  When aliasing to the
+    // uncompressed mnemonic (e.g. c.sub → sub) the operand is expanded.
+    let mut hidden = instruction.render_hints.compat_hidden_operands.clone();
+    let has_compat_alias = instruction.render_hints.compat_mnemonic.is_some();
+    if !has_compat_alias {
+        match instruction.mnemonic.as_str() {
+            "c.addi" | "c.slli" | "c.srai" | "c.srli" | "c.and" | "c.or" | "c.xor" | "c.sub"
+            | "c.addiw" | "c.addw" | "c.subw" => {
+                if let (
+                    Some(Operand::Register { register: dst }),
+                    Some(Operand::Register { register: src }),
+                ) = (instruction.operands.first(), instruction.operands.get(1))
+                    && dst.id == src.id
+                    && !hidden.contains(&1)
+                {
+                    hidden.push(1);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let hidden_operands: &[usize] = if matches!(profile, TextRenderProfile::Canonical) {
         &[][..]
     } else {
-        instruction.render_hints.compat_hidden_operands.as_slice()
+        &hidden
     };
 
-    let visible_operands = instruction
-        .operands
+    // Inject implicit sp operand for stack-based compressed instructions
+    // so the renderer produces "c.lwsp rd, imm(sp)" and "c.addi4spn rd, sp, imm".
+    let mut effective_operands = instruction.operands.clone();
+    match instruction.mnemonic.as_str() {
+        "c.lwsp" | "c.ldsp" | "c.flwsp" | "c.fldsp" => {
+            if effective_operands.len() == 2 {
+                effective_operands.push(Operand::Register {
+                    register: robustone_core::ir::RegisterId::riscv(2),
+                });
+            }
+        }
+        "c.swsp" | "c.sdsp" | "c.fswsp" | "c.fsdsp" => {
+            if effective_operands.len() == 2 {
+                effective_operands.push(Operand::Register {
+                    register: robustone_core::ir::RegisterId::riscv(2),
+                });
+            }
+        }
+        "c.addi4spn" => {
+            if effective_operands.len() == 2 {
+                effective_operands.insert(
+                    1,
+                    Operand::Register {
+                        register: robustone_core::ir::RegisterId::riscv(2),
+                    },
+                );
+            }
+        }
+        _ => {}
+    }
+
+    let visible_operands = effective_operands
         .iter()
         .enumerate()
         .filter(|(index, _)| !hidden_operands.contains(index))
@@ -228,9 +280,14 @@ fn format_riscv_operand(
 ) -> String {
     match operand {
         Operand::Immediate { value, .. } if is_riscv_csr_operand(mnemonic, index) => {
-            csr_name_lookup(*value as u16)
-                .map(str::to_string)
-                .unwrap_or_else(|| format_riscv_immediate(*value, "", unsigned_immediate))
+            let addr = *value as u16;
+            let xlen64 = mode_is_rv64(mode);
+            if let Some(name) = crate::shared::lookup_csr_for_xlen(addr, xlen64) {
+                name.to_string()
+            } else {
+                // Capstone renders unknown / out-of-XLEN CSRs in hex.
+                format!("0x{addr:x}")
+            }
         }
         Operand::Immediate { value, .. }
             if last_visible_index == Some(index) && is_riscv_control_flow_mnemonic(mnemonic) =>
@@ -485,25 +542,8 @@ fn is_riscv_atomic(mnemonic: &str) -> bool {
     )
 }
 
-fn csr_name_lookup(csr: u16) -> Option<&'static str> {
-    match csr {
-        0x100 => Some("sstatus"),
-        0x105 => Some("stvec"),
-        0x106 => Some("scounteren"),
-        0x143 => Some("stval"),
-        0x180 => Some("satp"),
-        0x305 => Some("mtvec"),
-        0x342 => Some("mcause"),
-        0xb00 => Some("mcycle"),
-        0xb03 => Some("mhpmcounter3"),
-        0xc00 => Some("cycle"),
-        0xc01 => Some("time"),
-        0xc02 => Some("instret"),
-        0xc80 => Some("cycleh"),
-        0xc81 => Some("timeh"),
-        0xc82 => Some("instreth"),
-        _ => None,
-    }
+fn mode_is_rv64(mode: &str) -> bool {
+    !mode.contains("riscv32")
 }
 
 /// RISC-V-specific instruction renderer.
@@ -511,11 +551,11 @@ pub struct RiscVRenderer;
 
 impl Renderer for RiscVRenderer {
     fn render(&self, instruction: &DecodedInstruction, options: RenderOptions) -> (String, String) {
-        // Match the legacy behavior where register aliases are enabled for
-        // compat profile unless explicitly disabled via compat_aliases.
-        let alias_regs = options.compat_aliases
-            && (options.alias_regs
-                || !matches!(options.text_profile, TextRenderProfile::Canonical));
+        // Register naming (ABI vs physical) is independent of mnemonic aliasing.
+        // Capstone keeps ABI register names even under CS_OPT_SYNTAX_NO_ALIAS_TEXT;
+        // only the Canonical profile (used by JSON IR) falls back to physical names.
+        let alias_regs =
+            options.alias_regs || !matches!(options.text_profile, TextRenderProfile::Canonical);
         render_riscv_text_parts(
             instruction,
             options.text_profile,

@@ -8,7 +8,7 @@
 //! Pseudo-instructions that mutate operands (e.g. `ori` → `prefetch.i`)
 //! are also handled because they are required for downstream compatibility.
 
-use robustone_core::ir::{DecodedInstruction, Operand};
+use robustone_core::ir::{DecodedInstruction, Operand, RegisterId};
 
 /// Apply RISC-V aliases to a decoded instruction.
 ///
@@ -18,16 +18,22 @@ use robustone_core::ir::{DecodedInstruction, Operand};
 pub fn apply_riscv_aliases(decoded: &mut DecodedInstruction) {
     match decoded.mnemonic.as_str() {
         "addi" => {
-            if let [_, Operand::Register { register: rs1 }, _] = decoded.operands.as_slice()
-                && rs1.id == 0
-                && decoded
-                    .registers_written
-                    .first()
-                    .map(|r| r.id != 0)
-                    .unwrap_or(false)
+            if let [
+                Operand::Register { register: rd },
+                Operand::Register { register: rs1 },
+                Operand::Immediate { value: imm, .. },
+            ] = decoded.operands.as_slice()
             {
-                decoded.render_hints.compat_mnemonic = Some("li".to_string());
-                decoded.render_hints.compat_hidden_operands = vec![1];
+                if rd.id == 0 && rs1.id == 0 && *imm == 0 {
+                    decoded.render_hints.compat_mnemonic = Some("nop".to_string());
+                    decoded.operands.clear();
+                } else if rs1.id == 0 && rd.id != 0 {
+                    decoded.render_hints.compat_mnemonic = Some("li".to_string());
+                    decoded.render_hints.compat_hidden_operands = vec![1];
+                } else if *imm == 0 && rd.id != 0 {
+                    decoded.render_hints.compat_mnemonic = Some("mv".to_string());
+                    decoded.render_hints.compat_hidden_operands = vec![2];
+                }
             }
         }
         "ori" => {
@@ -84,10 +90,25 @@ pub fn apply_riscv_aliases(decoded: &mut DecodedInstruction) {
             }
         }
         "jalr" => {
-            if let Some(rd) = decoded.registers_written.first()
-                && rd.id == 1
-            {
-                decoded.render_hints.compat_hidden_operands = vec![0];
+            if let Some(rd) = decoded.registers_written.first() {
+                if rd.id == 0 {
+                    if let [
+                        _,
+                        Operand::Register { register: rs1 },
+                        Operand::Immediate { value: imm, .. },
+                    ] = decoded.operands.as_slice()
+                    {
+                        if rs1.id == 1 && *imm == 0 {
+                            decoded.render_hints.compat_mnemonic = Some("ret".to_string());
+                            decoded.operands.clear();
+                        } else {
+                            decoded.render_hints.compat_mnemonic = Some("jr".to_string());
+                            decoded.render_hints.compat_hidden_operands = vec![0, 2];
+                        }
+                    }
+                } else if rd.id == 1 {
+                    decoded.render_hints.compat_hidden_operands = vec![0];
+                }
             }
         }
         "beq" => {
@@ -168,6 +189,16 @@ pub fn apply_riscv_aliases(decoded: &mut DecodedInstruction) {
         "c.addiw" => {
             decoded.render_hints.compat_mnemonic = Some("addiw".to_string());
         }
+        "c.addi16sp" => {
+            // c.addi16sp implicitly operates on sp (x2); prepend it to operands.
+            decoded.operands.insert(
+                0,
+                Operand::Register {
+                    register: RegisterId::riscv(2),
+                },
+            );
+            decoded.render_hints.compat_mnemonic = Some("addi".to_string());
+        }
         "c.lui" => {
             decoded.render_hints.compat_mnemonic = Some("lui".to_string());
         }
@@ -176,12 +207,135 @@ pub fn apply_riscv_aliases(decoded: &mut DecodedInstruction) {
         }
         "c.jal" => {
             decoded.render_hints.compat_mnemonic = Some("jal".to_string());
+            decoded
+                .implicit_registers_written
+                .push(RegisterId::riscv(1));
         }
         "c.subw" => {
             decoded.render_hints.compat_mnemonic = Some("subw".to_string());
         }
         "c.addw" => {
             decoded.render_hints.compat_mnemonic = Some("addw".to_string());
+        }
+        "c.addi" => {
+            if let [
+                Operand::Register { register: rd },
+                _,
+                Operand::Immediate { value: imm, .. },
+            ] = decoded.operands.as_slice()
+            {
+                if rd.id == 0 {
+                    if *imm == 0 {
+                        decoded.render_hints.compat_mnemonic = Some("nop".to_string());
+                        decoded.operands.clear();
+                    }
+                } else {
+                    decoded.render_hints.compat_mnemonic = Some("addi".to_string());
+                }
+            }
+        }
+        "c.li" => {
+            decoded.render_hints.compat_mnemonic = Some("li".to_string());
+        }
+        "c.mv" => {
+            decoded.render_hints.compat_mnemonic = Some("mv".to_string());
+        }
+        "c.add" => {
+            decoded.render_hints.compat_mnemonic = Some("add".to_string());
+        }
+        "c.sub" => {
+            decoded.render_hints.compat_mnemonic = Some("sub".to_string());
+        }
+        "c.xor" => {
+            decoded.render_hints.compat_mnemonic = Some("xor".to_string());
+        }
+        "c.or" => {
+            decoded.render_hints.compat_mnemonic = Some("or".to_string());
+        }
+        "c.and" => {
+            decoded.render_hints.compat_mnemonic = Some("and".to_string());
+        }
+        "c.slli" => {
+            decoded.render_hints.compat_mnemonic = Some("slli".to_string());
+        }
+        "c.srli" => {
+            decoded.render_hints.compat_mnemonic = Some("srli".to_string());
+        }
+        "c.srai" => {
+            decoded.render_hints.compat_mnemonic = Some("srai".to_string());
+        }
+        "c.andi" => {
+            decoded.render_hints.compat_mnemonic = Some("andi".to_string());
+        }
+        "c.j" => {
+            decoded.render_hints.compat_mnemonic = Some("j".to_string());
+        }
+        "c.beqz" => {
+            decoded.render_hints.compat_mnemonic = Some("beqz".to_string());
+        }
+        "c.bnez" => {
+            decoded.render_hints.compat_mnemonic = Some("bnez".to_string());
+        }
+        "c.lwsp" => {
+            decoded.render_hints.compat_mnemonic = Some("lw".to_string());
+        }
+        "c.ldsp" => {
+            decoded.render_hints.compat_mnemonic = Some("ld".to_string());
+        }
+        "c.flwsp" => {
+            decoded.render_hints.compat_mnemonic = Some("flw".to_string());
+        }
+        "c.fldsp" => {
+            decoded.render_hints.compat_mnemonic = Some("fld".to_string());
+        }
+        "c.swsp" => {
+            decoded.render_hints.compat_mnemonic = Some("sw".to_string());
+        }
+        "c.sdsp" => {
+            decoded.render_hints.compat_mnemonic = Some("sd".to_string());
+        }
+        "c.fswsp" => {
+            decoded.render_hints.compat_mnemonic = Some("fsw".to_string());
+        }
+        "c.fsdsp" => {
+            decoded.render_hints.compat_mnemonic = Some("fsd".to_string());
+        }
+        "c.lw" => {
+            decoded.render_hints.compat_mnemonic = Some("lw".to_string());
+        }
+        "c.sw" => {
+            decoded.render_hints.compat_mnemonic = Some("sw".to_string());
+        }
+        "c.ld" => {
+            decoded.render_hints.compat_mnemonic = Some("ld".to_string());
+        }
+        "c.sd" => {
+            decoded.render_hints.compat_mnemonic = Some("sd".to_string());
+        }
+        "c.flw" => {
+            decoded.render_hints.compat_mnemonic = Some("flw".to_string());
+        }
+        "c.fsw" => {
+            decoded.render_hints.compat_mnemonic = Some("fsw".to_string());
+        }
+        "c.fld" => {
+            decoded.render_hints.compat_mnemonic = Some("fld".to_string());
+        }
+        "c.fsd" => {
+            decoded.render_hints.compat_mnemonic = Some("fsd".to_string());
+        }
+        "c.addi4spn" => {
+            decoded.render_hints.compat_mnemonic = Some("addi".to_string());
+        }
+        "c.jalr" => {
+            decoded.render_hints.compat_mnemonic = Some("jalr".to_string());
+        }
+        "c.ebreak" => {
+            decoded.render_hints.compat_mnemonic = Some("ebreak".to_string());
+            decoded.operands.clear();
+        }
+        "c.unimp" => {
+            decoded.render_hints.compat_mnemonic = Some("unimp".to_string());
         }
         "fadd.s" | "fsub.s" | "fmul.s" | "fdiv.s" | "fsqrt.s" | "fmadd.s" | "fmsub.s"
         | "fnmadd.s" | "fnmsub.s" | "fcvt.w.s" | "fcvt.wu.s" | "fcvt.s.w" | "fcvt.s.wu"
