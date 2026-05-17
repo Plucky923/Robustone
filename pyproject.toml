@@ -15,6 +15,7 @@ disable = [
     "too-many-positional-arguments",
     "too-many-locals",
     "too-many-statements",
+    "too-many-lines",
 ]
 
 [tool.pylint."FORMAT"]
