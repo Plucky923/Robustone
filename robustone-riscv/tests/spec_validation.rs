@@ -73,3 +73,38 @@ fn test_backend_decode_addi() {
     assert_eq!(decoded.mnemonic, "addi");
     assert_eq!(decoded.size, 4);
 }
+
+#[test]
+fn test_print_remaining_overlaps() {
+    use robustone_isa::InstructionSpec;
+    let specs = backend::specs_c::SPECS;
+    for i in 0..specs.len() {
+        for j in (i + 1)..specs.len() {
+            if specs[i].pattern().overlaps(&specs[j].pattern())
+                && specs[i].priority() == specs[j].priority()
+                && !specs[i].modes().is_disjoint(&specs[j].modes())
+            {
+                println!(
+                    "Overlap: '{}' (mask={:x}, value={:x}, pri={}) & '{}' (mask={:x}, value={:x}, pri={})",
+                    specs[i].mnemonic(),
+                    specs[i].pattern().mask,
+                    specs[i].pattern().value,
+                    specs[i].priority(),
+                    specs[j].mnemonic(),
+                    specs[j].pattern().mask,
+                    specs[j].pattern().value,
+                    specs[j].priority()
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn test_print_c_check_error() {
+    let result = robustone_isa::check_spec_table(backend::specs_c::SPECS);
+    if let Err(e) = result {
+        println!("C check error: {}", e);
+        panic!("{}", e);
+    }
+}
