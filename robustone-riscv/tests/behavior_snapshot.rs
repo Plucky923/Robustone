@@ -80,10 +80,10 @@ fn snapshot_decode_compressed() {
     // Compressed instruction tests (C extension)
     let test_cases = vec![
         // (bytes, expected_mnemonic, addr)
-        (vec![0x01, 0x40], "c.nop", 0u64),  // c.nop
-        (vec![0x82, 0x90], "c.jalr", 0u64), // c.jalr ra
-        (vec![0xa2, 0x60], "c.jalr", 0u64), // c.jr a0
-        (vec![0x05, 0x45], "c.addi", 0u64), // c.addi a0, 1
+        (vec![0x01, 0x40], "c.li", 0u64),   // c.li zero, 0
+        (vec![0x82, 0x90], "c.jalr", 0u64), // c.jalr sp
+        (vec![0xa2, 0x60], "c.ldsp", 0u64), // c.ldsp t0, 8 (RV64)
+        (vec![0x05, 0x45], "c.li", 0u64),   // c.li a0, 1
     ];
 
     for (bytes, expected_mnemonic, addr) in &test_cases {

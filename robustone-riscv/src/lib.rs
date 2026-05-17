@@ -205,21 +205,16 @@ impl ArchitectureHandler for RiscVHandler {
             Xlen::X64 => crate::backend::RiscVMode::RV64,
         };
 
-        // Compressed instructions require the C extension globally.
-        if bytes.len() >= 2
-            && (bytes[0] & 0x3) != 0x3
-            && !features.contains(crate::backend::RiscVFeature::C)
-        {
-            return Err(robustone_core::types::error::DisasmError::decode_failure(
-                robustone_core::types::error::DecodeErrorKind::UnsupportedExtension,
-                Some(arch_name.to_string()),
-                "compressed instruction requires C extension".to_string(),
-            ));
+        // Capstone decodes compressed instructions even without explicit C mode,
+        // so we auto-enable C for compressed encodings to maintain compatibility.
+        let mut effective_features = features;
+        if bytes.len() >= 2 && (bytes[0] & 0x3) != 0x3 {
+            effective_features |= crate::backend::RiscVFeature::C;
         }
 
         let profile = DecodeProfile {
             mode,
-            features,
+            features: effective_features,
             render_dialect: robustone_isa::RenderDialect::Canonical,
             alias_policy: robustone_isa::AliasPolicy::None,
         };
